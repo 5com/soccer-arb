@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soccer Arb Finder</title>
+<style>
+body{font-family:system-ui;background:#0f172a;color:white;padding:15px}
+h1{font-size:20px}
+.card{background:#1e293b;padding:15px;border-radius:12px;margin-bottom:15px;border-left:4px solid #22c55e}
+.profit{background:#22c55e;color:black;padding:3px 8px;border-radius:6px;font-weight:bold;display:inline-block}
+table{width:100%;margin-top:10px;font-size:14px}
+td{padding:5px}
+.badge{font-size:11px;background:#334155;padding:2px 6px;border-radius:4px}
+</style>
+</head>
+<body>
+<h1>⚽ Live Arbitrage Finder</h1>
+<p id="status">Loading real odds from odds.json...</p>
+<div id="results"></div>
+
+<script>
+async function load(){
+  try{
+    const res = await fetch('odds.json?t='+Date.now());
+    const games = await res.json();
+    let found = 0;
+    let html = '';
+    
+    games.forEach(game => {
+      let best = {home:0, draw:0, away:0, homeBook:'', drawBook:'', awayBook:''};
+      
+      game.bookmakers.forEach(bm => {
+        const m = bm.markets.find(x=>x.key==='h2h');
+        if(!m) return;
+        // The API returns outcomes in order home, draw, away but names help
+        m.outcomes.forEach(o => {
+          if(o.name === game.home_team && o.price > best.home){best.home=o.price; best.homeBook=bm.title}
+          if(o.name === 'Draw' && o.price > best.draw){best.draw=o.price; best.drawBook=bm.title}
+          if(o.name === game.away_team && o.price > best.away){best.away=o.price; best.awayBook=bm.title}
+        });
+      });
+      
+      if(best.home && best.away){
+        let sum = (1/best.home) + (1/(best.draw||1000)) + (1/best.away);
+        // For 2-way if no draw market, use 2 outcomes
+        if(!best.draw) sum = (1/best.home) + (1/best.away);
+        
+        if(sum < 1){
+          found++;
+          const profit = ((1-sum)*100).toFixed(2);
+          const totalStake = 100;
+          const stakeHome = (totalStake / best.home / sum).toFixed(2);
+          const stakeAway = (totalStake / best.away / sum).toFixed(2);
+          const stakeDraw = best.draw ? (totalStake / best.draw / sum).toFixed(2) : 0;
+          
+          html += `
+          <div class="card">
+            <div><span class="badge">${new Date(game.commence_time).toLocaleString()}</span></div>
+            <h3>${game.home_team} vs ${game.away_team}</h3>
+            <span class="profit">${profit}% PROFIT</span>
+            <table>
+              <tr><td>🏠 ${game.home_team} @ ${best.home} <span class="badge">${best.homeBook}</span></td><td>Stake $${stakeHome}</td></tr>
+              ${best.draw ? `<tr><td>🤝 Draw @ ${best.draw} <span class="badge">${best.drawBook}</span></td><td>Stake $${stakeDraw}</td></tr>` : ''}
+              <tr><td>✈️ ${game.away_team} @ ${best.away} <span class="badge">${best.awayBook}</span></td><td>Stake $${stakeAway}</td></tr>
+            </table>
+            <small>Guaranteed return: $${(totalStake/sum).toFixed(2)} on $100</small>
+          </div>`;
+        }
+      }
+    });
+    
+    if(found===0){
+      document.getElementById('status').innerHTML = `Checked ${games.length} matches - No arbitrage right now. Auto-refreshing every 15 mins...`;
+    } else {
+      document.getElementById('status').innerHTML = `🔥 Found ${found} arbitrage opportunities from ${games.length} matches!`;
+      document.getElementById('results').innerHTML = html;
+    }
+  } catch(e){
+    document.getElementById('status').innerText = 'Error loading odds.json: ' + e + ' - Make sure workflow ran';
+  }
+}
+load();
+setInterval(load, 60000);
+</script>
+</body>
+</html>
