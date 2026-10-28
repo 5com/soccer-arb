@@ -1,0 +1,23 @@
+name: Fetch Real Odds
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/15 * * * *'
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+        run: curl -s "https://api.the-odds-api.com/v4/sports/soccer_epl/odds/?apiKey=$ODDS_API_KEY&regions=eu,uk&markets=h2h&oddsFormat=decimal" -o odds.json
+      - name: Save
+        run: |
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
+          git add odds.json
+          git commit -m "update" || true
+          git push
