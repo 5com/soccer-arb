@@ -1,0 +1,21 @@
+name: Fetch Real Odds
+on:
+  schedule:
+    - cron: '* * * * *'
+  workflow_dispatch:
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Get real odds
+        run: |
+          curl -s "https://api.the-odds-api.com/v4/sports/soccer_epl/odds/?regions=eu&bookmakers=bet9ja&markets=h2h,totals,btts&apiKey=${{ secrets.ODDS_API_KEY }}" -o odds.json
+          cat odds.json
+      - name: Commit odds
+        run: |
+          git config user.name "arb-bot"
+          git config user.email "bot@arb.com"
+          git add odds.json
+          git commit -m "real odds" || exit 0
+          git push
