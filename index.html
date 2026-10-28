@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Soccer Arb - REAL Scanner</title>
+<style>
+body{font-family:system-ui;background:#0a0a0a;color:#fff;margin:0;padding:12px}
+.header{position:sticky;top:0;background:#0a0a0a;padding:10px 0;border-bottom:1px solid #222;z-index:10}
+.badge{display:inline-block;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:bold}
+.live{background:#00ff88;color:#000;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.6}}
+.card{background:#141414;border:1px solid #222;border-radius:12px;padding:12px;margin:10px 0}
+.arb{border-color:#00ff88;background:#0f1a13}
+.profit{color:#00ff88;font-weight:bold;font-size:18px}
+.book{font-size:13px;color:#888}
+.odds{font-size:16px;font-weight:bold}
+button{background:#00ff88;color:#000;border:none;padding:10px 16px;border-radius:8px;font-weight:bold;width:100%;margin-top:8px}
+input{width:100%;padding:10px;background:#222;border:1px solid #333;border-radius:8px;color:#fff;margin:6px 0}
+</style>
+</head>
+<body>
+<div class="header">
+<h2 style="margin:0">⚽ Soccer-Arb REAL <span class="badge live">● LIVE</span></h2>
+<div style="font-size:12px;color:#888;margin-top:4px">Repo: 5com/soccer-arb | Auto-scan every 60s</div>
+<div style="margin-top:8px;display:flex;gap:8px">
+<input id="bankroll" type="number" value="10000" placeholder="Bankroll NGN"><button onclick="loadOdds()" style="width:auto">Refresh Now</button>
+</div>
+<div id="status" style="font-size:12px;color:#888;margin-top:6px">Loading real odds.json...</div>
+</div>
+<div id="results"></div>
+<script>
+let bankroll = 10000;
+document.getElementById('bankroll').addEventListener('input', e=>{
+  bankroll = parseFloat(e.target.value)||10000;
+  render(window.lastData||[]);
+});
+async function loadOdds(){
+  document.getElementById('status').innerText = "Fetching real odds...";
+  try{
+    const res = await fetch('odds.json?t='+Date.now());
+    if(!res.ok) throw new Error('odds.json not yet created');
+    const data = await res.json();
+    window.lastData = data;
+    document.getElementById('status').innerText = `Last update: ${new Date().toLocaleTimeString()} | ${data.length} matches`;
+    render(data);
+  }catch(e){
+    document.getElementById('status').innerText = e.message;
+    document.getElementById('results').innerHTML = `<div class="card"><b>Setup needed:</b><br>1. Add ODDS_API_KEY secret<br>2. Actions tab -> Fetch Real Odds -> Run workflow<br>3. Settings -> Pages -> Enable<br>Site: https://5com.github.io/soccer-arb/</div>`;
+  }
+}
+function findArb(outcomes){
+  if(outcomes.length < 2) return null;
+  const best = {};
+  outcomes.forEach(o=>{
+    if(!best[o.name] || o.price > best[o.name].price) best[o.name] = o;
+  });
+  const bestList = Object.values(best);
+  if(bestList.length < 2) return null;
+  const invSum = bestList.reduce((s,b)=> s + 1/b.price, 0);
+  if(invSum < 1){
+    const profit = (1 - invSum)*100;
+    const stakes = bestList.map(b=> ({...b, stake: (bankroll * (1/b.price) / invSum).toFixed(0), payout: (bankroll / invSum).toFixed(0)}));
+    return {profit, stakes, invSum};
+  }
+  return null;
+}
+function render(matches){
+  const container = document.getElementById('results');
+  container.innerHTML = "";
+  if(!matches || !matches.length){ container.innerHTML = "<div class=card>No matches yet</div>"; return; }
+  const marketsGrouped = {};
+  matches.forEach(m=>{
+    m.bookmakers.forEach(bm=>{
+      bm.markets.forEach(mk=>{
+        const key = m.id + '|' + mk.key + '|' + (mk.outcomes[0].point||'');
+        if(!marketsGrouped[key]) marketsGrouped[key] = {market: mk.key, point: mk.outcomes[0].point||'', match: m.home_team + ' vs ' + m.away_team, outcomes: []};
+        mk.outcomes.forEach(o=>{
+          marketsGrouped[key].outcomes.push({name: o.name + (o.point? ' '+o.point:''), price: o.price, bookmaker: bm.title});
+        });
+      });
+    });
+  });
+  Object.values(marketsGrouped).forEach(g=>{
+    const arb = findArb(g.outcomes);
+    if(arb && arb.profit > 0.2){
+      const el = document.createElement('div');
+      el.className = 'card arb';
+      el.innerHTML = `<div style="display:flex;justify-content:space-between"><b>${g.match}</b><span class="profit">${arb.profit.toFixed(2)}% PROFIT</span></div>
+      <div style="font-size:13px;color:#aaa;margin:4px 0">${g.market.toUpperCase()} ${g.point||''}</div>
+      ${arb.stakes.map(s=> `<div style="display:flex;justify-content:space-between;margin:6px 0"><span class="book">${s.bookmaker}: ${s.name}</span><span><span class="odds">${s.price}</span> -> NGN ${s.stake}</span></div>`).join('')}
+      <div style="font-size:11px;color:#666">Payout: NGN ${arb.stakes[0].payout} | Bankroll: NGN ${bankroll}</div>`;
+      container.appendChild(el);
+    }
+  });
+  if(container.innerHTML===""){
+    container.innerHTML = '<div class="card">Scanning... no arb >0.2% found. Keep tab open, it auto-refreshes every 30s. When odds move, green card will pop.</div>';
+  }
+}
+loadOdds();
+setInterval(loadOdds, 30000);
+</script>
+</body>
+</html>
